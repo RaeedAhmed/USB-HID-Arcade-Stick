@@ -1,37 +1,23 @@
+#define BOUNCE_WITH_PROMPT_DETECTION
+#include <Bounce2.h>
 
-#include <Bounce.h>
-#include <vector>
-
-// ============================================================================
-//                                  Config
-// ============================================================================
-
-// Define the debounce delay values (ms) for the hat and button switches
-#define hat_delay 5
+#define hat_delay 5     // debounce time delay in milliseconds
 #define button_delay 5
 
-// Define number of pushbuttons
-#define num_buttons 11
-// Starting pin of four hat pins (Change pins in if(hat_change{}))
-#define hat_start 20
-// Select button pin to enable Keyboard/Mouse while pressed
-// Comment out definition if only using joystick
-#define modifier 8
-#define lclick 9 // mouse click button
-#define rclick 10
-uint16_t keys[8] = {KEY_LEFT,KEY_DOWN,KEY_UP,KEY_RIGHT,KEY_ESC,KEY_LEFT_GUI,KEY_BACKSPACE,KEY_RETURN};
+#define num_buttons 11  // total number of pushbuttons
+#define modifier 8     // index of key in array below to enable keyboard
 
-// ============================================================================
-//                                End Config
-// ============================================================================
-
-// Store Bounce objects in vector
-std::vector<Bounce> buttons;
-std::vector<Bounce> directions;
+// define physical button pins
+const uint8_t button_pins[num_buttons] = {0,1,2,3,4,5,6,7,8,9,10};
+const uint8_t hat_pins[4] = {20,21,22,23};
+// assign key presses to ordered array pins
+uint16_t keys[8] = {KEY_BACKSPACE,KEY_RETURN,KEY_DELETE,KEY_ESC,KEY_TAB,KEY_LEFT_GUI,KEY_LEFT_ALT,KEY_RIGHT_CTRL};
+uint16_t arrows[4] = {KEY_LEFT,KEY_DOWN,KEY_RIGHT,KEY_UP};
+Bounce buttons[num_buttons];  // Instantiate and store debounce objects for each pin
+Bounce directions[4];
 
 // Save state and record change of hat switches; Map states to x,y for rotation
 byte x, y;
-int8_t v,h;
 uint8_t hat_state[4] = {0,0,0,0};
 boolean hat_change = false;
 int16_t hat_value_map[4][4] = {
@@ -41,42 +27,33 @@ int16_t hat_value_map[4][4] = {
   {-1, -1, -1, -1}
 };
 
-// Cursor pos x: right, pos y: down
-int8_t cursor[4][4][2] = {
-  {{0,0}, {0,10}, {0,-10}, {0,0}},
-  {{10,0}, {7,7}, {7,-7}, {0,0}},
-  {{-10,0}, {-7,7}, {-7,-7}, {0,0}},
-  {{0,0}, {0,0}, {0,0}, {0,0}}
-};
-
 void setup() {
-  // Debounce objects for buttons and hat switches, initialize pins
-  buttons.reserve(num_buttons);
+  // Iterate through pins, initialize pins and assign delay
   for (uint8_t i = 0; i < num_buttons; i++) {
-    buttons.push_back(Bounce(i, button_delay));
-    pinMode(i, INPUT_PULLUP);
+    buttons[i].attach(button_pins[i], INPUT_PULLUP);
+    buttons[i].interval(button_delay);
   }
   
-  directions.reserve(4);
-  for (uint8_t i = hat_start; i < hat_start + 4; i++) {
-    directions.push_back(Bounce(i, hat_delay));
-    pinMode(i, INPUT_PULLUP);
+  for (uint8_t i = 0; i < 4; i++) {
+    directions[i].attach(hat_pins[i], INPUT_PULLUP);
+    directions[i].interval(hat_delay);
   }
+
 }
 
 void loop() {
-  // Update button Bounce objects, send/ stop button 
+  // Update each pin, setting button state high or low from voltage change
   for (uint8_t i = 0; i < num_buttons; i++) {
     buttons[i].update();
-    if (buttons[i].fallingEdge()) {Joystick.button(i+1, 1);}
-    if (buttons[i].risingEdge()) {Joystick.button(i+1, 0);}
+    if (buttons[i].fell()) {Joystick.button(i+1, 1);}
+    if (buttons[i].rose()) {Joystick.button(i+1, 0);}
   }
 
   // Update the Bounce objects for the hat switches
   for (uint8_t i = 0; i < 4; i++) {
     directions[i].update();
-    if (directions[i].fallingEdge()) {hat_state[i] = 1; hat_change = true;}
-    if (directions[i].risingEdge()) {hat_state[i] = 0; hat_change = true;}
+    if (directions[i].fell()) {hat_state[i] = 1; hat_change = true;}
+    if (directions[i].rose()) {hat_state[i] = 0; hat_change = true;}
   }
 
   // y: U/D states, x: L/R states, mapped to angles listed above
@@ -87,19 +64,16 @@ void loop() {
       Joystick.hat(hat_value_map[y][x]);
   }
 
-  #ifdef modifier
   if (buttons[modifier].read() == LOW) {
     for (uint8_t i = 0; i < 8; i++) {
-      if (buttons[i].fallingEdge()) {Keyboard.press(keys[i]);Keyboard.release(keys[i]);}
+      if (buttons[i].fell()) {Keyboard.press(keys[i]);}
+      if (buttons[i].rose()) {Keyboard.release(keys[i]);}
     }
-    if (buttons[lclick].fallingEdge()) {Mouse.click();}
-    if (buttons[rclick].fallingEdge()) {Mouse.click(MOUSE_RIGHT);} 
-    h = cursor[y][x][0];
-    v = cursor[y][x][1];
-    Mouse.move(h,v);
-    delay(12);
+    for (uint8_t i = 0; i < 4; i++) {
+      if (directions[i].fell()) {Keyboard.press(arrows[i]);}
+      if (directions[i].rose()) {Keyboard.release(arrows[i]);}
+    }
   }
-  #endif
 
   // Reset the hat state change flag
   hat_change = false;
